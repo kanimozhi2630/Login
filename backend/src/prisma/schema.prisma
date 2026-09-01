@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(uuid())
+  name          String         @db.VarChar(255)
+  email         String         @unique @db.VarChar(255)
+  passwordHash  String?        @map("password_hash") @db.VarChar(255)
+  emailVerified Boolean        @default(false) @map("email_verified")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  
+  oauthAccounts OAuthAccount[]
+  otpVerifications OtpVerification[]
+  sessions      Session[]
+  
+  @@map("users")
+}
+
+model OAuthAccount {
+  id               String  @id @default(uuid())
+  userId           String  @map("user_id") @db.Uuid
+  provider         String  @db.VarChar(50)
+  providerAccountId String @map("provider_account_id") @db.VarChar(255)
+  createdAt        DateTime @default(now()) @map("created_at")
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+model OtpVerification {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id") @db.Uuid
+  email     String   @db.VarChar(255)
+  otpHash   String   @map("otp_hash") @db.VarChar(255)
+  purpose   String   @db.VarChar(20)
+  expiresAt DateTime @map("expires_at")
+  attempts  Int      @default(0)
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  @@index([email])
+  @@index([expiresAt])
+  @@map("otp_verifications")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id") @db.Uuid
+  token     String   @unique @db.VarChar(255)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([token])
+  @@index([expiresAt])
+  @@map("sessions")
+}

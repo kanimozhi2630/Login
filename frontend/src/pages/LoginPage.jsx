@@ -1,39 +1,53 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authService } from '../services/authService'
+import { useAuth } from '../context/AuthContext'
 import Button from '../components/common/Button'
 import Input from '../components/common/Input'
 import Alert from '../components/common/Alert'
 
 function LoginPage() {
   const navigate = useNavigate()
+  const { login } = useAuth()
   const [showEmailForm, setShowEmailForm] = useState(false)
-  const [email, setEmail] = useState('')
-  const [error, setError] = useState('')
+  const [loginMethod, setLoginMethod] = useState('password') // 'password' or 'otp'
+  const [formData, setFormData] = useState({
+    email: '',
+    password: ''
+  })
+  const [errors, setErrors] = useState({})
   const [alert, setAlert] = useState(null)
   const [loading, setLoading] = useState(false)
 
-  const handleChange = (e) => {
-    setEmail(e.target.value)
-    setError('')
+  const validatePasswordForm = () => {
+    const newErrors = {}
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required'
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = 'Invalid email format'
+    }
+    if (!formData.password) {
+      newErrors.password = 'Password is required'
+    }
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
   }
 
-  const validateEmail = () => {
-    if (!email.trim()) {
-      setError('Email is required')
-      return false
+  const validateOtpForm = () => {
+    const newErrors = {}
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required'
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = 'Invalid email format'
     }
-    if (!/\S+@\S+\.\S+/.test(email)) {
-      setError('Invalid email format')
-      return false
-    }
-    return true
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
   }
 
-  const handleSendOtp = async (e) => {
+  const handlePasswordLogin = async (e) => {
     e.preventDefault()
     
-    if (!validateEmail()) {
+    if (!validatePasswordForm()) {
       return
     }
 
@@ -41,7 +55,39 @@ function LoginPage() {
     setAlert(null)
 
     try {
-      const response = await authService.initiateLogin(email)
+      const response = await authService.loginWithPassword({
+        email: formData.email,
+        password: formData.password
+      })
+      
+      if (response.success) {
+        login(response.token, response.user)
+        navigate('/dashboard')
+      } else {
+        setAlert({ type: 'error', message: response.message })
+      }
+    } catch (error) {
+      setAlert({ 
+        type: 'error', 
+        message: error.response?.data?.message || 'Failed to login. Please try again.' 
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSendOtp = async (e) => {
+    e.preventDefault()
+    
+    if (!validateOtpForm()) {
+      return
+    }
+
+    setLoading(true)
+    setAlert(null)
+
+    try {
+      const response = await authService.initiateLogin(formData.email)
       
       if (response.success) {
         navigate('/verify-otp', { 
@@ -69,6 +115,14 @@ function LoginPage() {
 
   const handleBackToOptions = () => {
     setShowEmailForm(false)
+  }
+
+  const handleFormDataChange = (e) => {
+    const { name, value } = e.target
+    setFormData(prev => ({ ...prev, [name]: value }))
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }))
+    }
   }
 
   return (
@@ -163,27 +217,92 @@ function LoginPage() {
               ← Back to login options
             </button>
 
-            <form onSubmit={handleSendOtp}>
-              <Input
-                label="Email"
-                name="email"
-                type="email"
-                value={email}
-                onChange={handleChange}
-                placeholder="your@email.com"
-                error={error}
-                required
-              />
-
-              <Button
-                type="submit"
-                variant="primary"
-                className="w-full"
-                loading={loading}
+            {/* Login Method Toggle */}
+            <div className="flex space-x-2">
+              <button
+                type="button"
+                onClick={() => setLoginMethod('password')}
+                className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                  loginMethod === 'password'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
               >
-                Send OTP
-              </Button>
-            </form>
+                Password
+              </button>
+              <button
+                type="button"
+                onClick={() => setLoginMethod('otp')}
+                className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
+                  loginMethod === 'otp'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                OTP
+              </button>
+            </div>
+
+            {/* Password Login Form */}
+            {loginMethod === 'password' && (
+              <form onSubmit={handlePasswordLogin}>
+                <Input
+                  label="Email"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleFormDataChange}
+                  placeholder="your@email.com"
+                  error={errors.email}
+                  required
+                />
+
+                <Input
+                  label="Password"
+                  name="password"
+                  type="password"
+                  value={formData.password}
+                  onChange={handleFormDataChange}
+                  placeholder="••••••••"
+                  error={errors.password}
+                  required
+                />
+
+                <Button
+                  type="submit"
+                  variant="primary"
+                  className="w-full"
+                  loading={loading}
+                >
+                  Login
+                </Button>
+              </form>
+            )}
+
+            {/* OTP Login Form */}
+            {loginMethod === 'otp' && (
+              <form onSubmit={handleSendOtp}>
+                <Input
+                  label="Email"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleFormDataChange}
+                  placeholder="your@email.com"
+                  error={errors.email}
+                  required
+                />
+
+                <Button
+                  type="submit"
+                  variant="primary"
+                  className="w-full"
+                  loading={loading}
+                >
+                  Send OTP
+                </Button>
+              </form>
+            )}
           </div>
         )}
       </div>

@@ -1,54 +1,40 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authService } from '../services/authService'
+import { useAuth } from '../context/AuthContext'
 import Button from '../components/common/Button'
 import Input from '../components/common/Input'
 import Alert from '../components/common/Alert'
 
 function SignupPage() {
   const navigate = useNavigate()
+  const { login } = useAuth()
   const [showEmailForm, setShowEmailForm] = useState(false)
-  const [step, setStep] = useState(1) // 1: Email, 2: OTP, 3: Password
-  const [email, setEmail] = useState('')
-  const [otp, setOtp] = useState('')
+  const [step, setStep] = useState(1) // 1: Form, 2: OTP
   const [formData, setFormData] = useState({
     name: '',
+    email: '',
     password: '',
     confirmPassword: ''
   })
+  const [otp, setOtp] = useState('')
   const [errors, setErrors] = useState({})
   const [alert, setAlert] = useState(null)
   const [loading, setLoading] = useState(false)
 
-  const validateEmail = () => {
-    const newErrors = {}
-    if (!email.trim()) {
-      newErrors.email = 'Email is required'
-    } else if (!/\S+@\S+\.\S+/.test(email)) {
-      newErrors.email = 'Invalid email format'
-    }
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const validateOtp = () => {
-    const newErrors = {}
-    if (!otp.trim()) {
-      newErrors.otp = 'OTP is required'
-    } else if (!/^\d{6}$/.test(otp)) {
-      newErrors.otp = 'OTP must be 6 digits'
-    }
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const validatePasswordForm = () => {
+  const validateForm = () => {
     const newErrors = {}
 
     if (!formData.name.trim()) {
       newErrors.name = 'Name is required'
     } else if (formData.name.length < 2) {
       newErrors.name = 'Name must be at least 2 characters'
+    }
+
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required'
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = 'Invalid email format'
     }
 
     if (!formData.password) {
@@ -73,10 +59,21 @@ function SignupPage() {
     return Object.keys(newErrors).length === 0
   }
 
+  const validateOtp = () => {
+    const newErrors = {}
+    if (!otp.trim()) {
+      newErrors.otp = 'OTP is required'
+    } else if (!/^\d{6}$/.test(otp)) {
+      newErrors.otp = 'OTP must be 6 digits'
+    }
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
   const handleSendOtp = async (e) => {
     e.preventDefault()
     
-    if (!validateEmail()) {
+    if (!validateForm()) {
       return
     }
 
@@ -85,8 +82,10 @@ function SignupPage() {
 
     try {
       const response = await authService.initiateSignup({
-        email,
-        password: 'temp_password' // Temporary, will be set in step 3
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        confirmPassword: formData.confirmPassword
       })
       
       if (response.success) {
@@ -97,7 +96,7 @@ function SignupPage() {
     } catch (error) {
       setAlert({ 
         type: 'error', 
-        message: error.response?.data?.message || 'Failed to send OTP. Please try again.' 
+        message: error.response?.data?.message || error.message || 'Failed to send OTP. Please try again.' 
       })
     } finally {
       setLoading(false)
@@ -116,81 +115,24 @@ function SignupPage() {
 
     try {
       const response = await authService.verifySignupOtp({
-        email,
+        email: formData.email,
         otp
       })
       
       if (response.success) {
-        setStep(3)
+        // Login user automatically
+        login(response.token, response.user)
+        navigate('/dashboard')
       } else {
         setAlert({ type: 'error', message: response.message })
       }
     } catch (error) {
       setAlert({ 
         type: 'error', 
-        message: error.response?.data?.message || 'Failed to verify OTP. Please try again.' 
+        message: error.response?.data?.message || error.message || 'Failed to verify OTP. Please try again.' 
       })
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleCreateAccount = async (e) => {
-    e.preventDefault()
-    
-    if (!validatePasswordForm()) {
-      return
-    }
-
-    setLoading(true)
-    setAlert(null)
-
-    try {
-      // Store final signup data for account creation
-      sessionStorage.setItem('finalSignupData', JSON.stringify({
-        name: formData.name,
-        email,
-        password: formData.password
-      }))
-
-      // Re-send OTP to verify the same email
-      const otpResponse = await authService.resendSignupOtp(email)
-      
-      if (!otpResponse.success) {
-        setAlert({ type: 'error', message: otpResponse.message })
-        setLoading(false)
-        return
-      }
-
-      // Navigate to OTP page for final verification
-      navigate('/verify-otp', { 
-        state: { 
-          email, 
-          purpose: 'SIGNUP_FINAL',
-          isFinalStep: true
-        } 
-      })
-    } catch (error) {
-      setAlert({ 
-        type: 'error', 
-        message: error.response?.data?.message || 'Failed to create account. Please try again.' 
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleEmailChange = (e) => {
-    setEmail(e.target.value)
-    if (errors.email) {
-      setErrors(prev => ({ ...prev, email: '' }))
-    }
-  }
-
-  const handleOtpChange = (e) => {
-    setOtp(e.target.value)
-    if (errors.otp) {
-      setErrors(prev => ({ ...prev, otp: '' }))
     }
   }
 
@@ -199,6 +141,13 @@ function SignupPage() {
     setFormData(prev => ({ ...prev, [name]: value }))
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }))
+    }
+  }
+
+  const handleOtpChange = (e) => {
+    setOtp(e.target.value)
+    if (errors.otp) {
+      setErrors(prev => ({ ...prev, otp: '' }))
     }
   }
 
@@ -223,9 +172,8 @@ function SignupPage() {
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             {!showEmailForm && 'Sign up to get started'}
-            {showEmailForm && step === 1 && 'Step 1: Verify your email'}
-            {showEmailForm && step === 2 && 'Step 2: Enter verification code'}
-            {showEmailForm && step === 3 && 'Step 3: Create your password'}
+            {showEmailForm && step === 1 && 'Enter your details to create an account'}
+            {showEmailForm && step === 2 && 'Verify your email address'}
           </p>
         </div>
 
@@ -309,68 +257,9 @@ function SignupPage() {
               ← Back
             </button>
 
-            {/* Step 1: Email Input */}
+            {/* Step 1: Registration Form */}
             {step === 1 && (
               <form onSubmit={handleSendOtp}>
-                <Input
-                  label="Email"
-                  name="email"
-                  type="email"
-                  value={email}
-                  onChange={handleEmailChange}
-                  placeholder="your@email.com"
-                  error={errors.email}
-                  required
-                />
-
-                <Button
-                  type="submit"
-                  variant="primary"
-                  className="w-full"
-                  loading={loading}
-                >
-                  Send Verification OTP
-                </Button>
-              </form>
-            )}
-
-            {/* Step 2: OTP Input */}
-            {step === 2 && (
-              <form onSubmit={handleVerifyOtp}>
-                <div className="text-center mb-4">
-                  <p className="text-sm text-gray-600">
-                    We sent a verification code to:
-                  </p>
-                  <p className="text-sm font-medium text-blue-600">
-                    {email}
-                  </p>
-                </div>
-
-                <Input
-                  label="Verification Code"
-                  name="otp"
-                  type="text"
-                  value={otp}
-                  onChange={handleOtpChange}
-                  placeholder="123456"
-                  error={errors.otp}
-                  required
-                />
-
-                <Button
-                  type="submit"
-                  variant="primary"
-                  className="w-full"
-                  loading={loading}
-                >
-                  Verify OTP
-                </Button>
-              </form>
-            )}
-
-            {/* Step 3: Password Input */}
-            {step === 3 && (
-              <form onSubmit={handleCreateAccount}>
                 <Input
                   label="Full Name"
                   name="name"
@@ -379,6 +268,17 @@ function SignupPage() {
                   onChange={handleFormDataChange}
                   placeholder="John Doe"
                   error={errors.name}
+                  required
+                />
+
+                <Input
+                  label="Email"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleFormDataChange}
+                  placeholder="your@email.com"
+                  error={errors.email}
                   required
                 />
 
@@ -410,7 +310,41 @@ function SignupPage() {
                   className="w-full"
                   loading={loading}
                 >
-                  Create Account
+                  Send OTP / Create Account
+                </Button>
+              </form>
+            )}
+
+            {/* Step 2: OTP Verification */}
+            {step === 2 && (
+              <form onSubmit={handleVerifyOtp}>
+                <div className="text-center mb-4">
+                  <p className="text-sm text-gray-600">
+                    We sent a verification code to:
+                  </p>
+                  <p className="text-sm font-medium text-blue-600">
+                    {formData.email}
+                  </p>
+                </div>
+
+                <Input
+                  label="Verification Code"
+                  name="otp"
+                  type="text"
+                  value={otp}
+                  onChange={handleOtpChange}
+                  placeholder="123456"
+                  error={errors.otp}
+                  required
+                />
+
+                <Button
+                  type="submit"
+                  variant="primary"
+                  className="w-full"
+                  loading={loading}
+                >
+                  Verify OTP
                 </Button>
               </form>
             )}

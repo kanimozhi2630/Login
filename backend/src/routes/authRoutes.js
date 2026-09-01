@@ -1,7 +1,7 @@
 import express from 'express'
 import { authenticate } from '../middleware/authMiddleware.js'
 import { createRateLimiter } from '../middleware/rateLimiter.js'
-import { signupValidation, emailValidation, otpValidation } from '../utils/validators.js'
+import { signupValidation, emailValidation, otpValidation, loginPasswordValidation } from '../utils/validators.js'
 import * as authController from '../controllers/authController.js'
 
 // Create rate limiters for auth endpoints
@@ -28,6 +28,7 @@ router.post('/send-signup-otp', otpRateLimiter, emailValidation, authController.
 router.post('/verify-signup-otp', authRateLimiter, otpValidation, authController.verifySignupOtp)
 
 // Login routes (with stricter rate limiting)
+router.post('/login', authRateLimiter, loginPasswordValidation, authController.loginWithPassword)
 router.post('/send-login-otp', otpRateLimiter, emailValidation, authController.initiateLogin)
 router.post('/verify-login-otp', authRateLimiter, otpValidation, authController.verifyLoginOtp)
 

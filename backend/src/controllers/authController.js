@@ -42,13 +42,24 @@ export const resendSignupOtp = asyncHandler(async (req, res) => {
 })
 
 /**
+ * Login with email and password
+ */
+export const loginWithPassword = asyncHandler(async (req, res) => {
+  const { email, password } = req.body
+
+  const result = await authService.loginWithPassword(email, password)
+  
+  res.status(result.success ? 200 : 400).json(result)
+})
+
+/**
  * Initiate login with OTP
  */
 export const initiateLogin = asyncHandler(async (req, res) => {
   const { email } = req.body
 
   const result = await authService.initiateLogin(email)
-  
+
   res.status(result.success ? 200 : 400).json(result)
 })
 

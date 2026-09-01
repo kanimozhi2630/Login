@@ -1,6 +1,6 @@
 import prisma from '../config/database.js'
 import { generateToken } from '../utils/tokenGenerator.js'
-import { hashPassword } from '../utils/passwordHasher.js'
+import { hashPassword, verifyPassword } from '../utils/passwordHasher.js'
 import otpService from './otpService.js'
 import emailService from './emailService.js'
 
@@ -30,7 +30,7 @@ class AuthService {
       if (existingUser) {
         return {
           success: false,
-          message: 'Email is already registered'
+          message: 'An account with this email already exists. Please login.'
         }
       }
 
@@ -142,6 +142,68 @@ class AuthService {
   }
 
   /**
+   * Login with email and password
+   * @param {string} email - User's email
+   * @param {string} password - User's password
+   * @returns {Promise<object>} Result with success status, token, and user data
+   */
+  async loginWithPassword(email, password) {
+    try {
+      // Find user by email
+      const user = await prisma.user.findUnique({
+        where: { email }
+      })
+
+      if (!user) {
+        return {
+          success: false,
+          message: 'Incorrect email or password.'
+        }
+      }
+
+      // Check if user has a password (might be OAuth-only user)
+      if (!user.passwordHash) {
+        return {
+          success: false,
+          message: 'This account uses a different login method. Please use Email OTP or Google OAuth.'
+        }
+      }
+
+      // Verify password
+      const isPasswordValid = await verifyPassword(user.passwordHash, password)
+
+      if (!isPasswordValid) {
+        return {
+          success: false,
+          message: 'Incorrect email or password.'
+        }
+      }
+
+      // Generate JWT token
+      const token = generateToken({ userId: user.id })
+
+      return {
+        success: true,
+        message: 'Login successful',
+        token,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          emailVerified: user.emailVerified
+        }
+      }
+
+    } catch (error) {
+      console.error('Error logging in with password:', error)
+      return {
+        success: false,
+        message: 'Failed to login. Please try again.'
+      }
+    }
+  }
+
+  /**
    * Initiate login process with OTP
    * @param {string} email - User's email
    * @returns {Promise<object>} Result with success status and message
@@ -150,7 +212,7 @@ class AuthService {
     try {
       // Passwordless flow: accept any valid email, don't check if user exists
       // OTP verification proves email ownership
-      
+
       // Create and send OTP
       const otpResult = await otpService.createAndSendOtp(email, 'LOGIN')
 

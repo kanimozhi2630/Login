@@ -18,6 +18,11 @@ export const authService = {
   },
 
   // Login
+  async loginWithPassword(data) {
+    const response = await api.post('/auth/login', data)
+    return response.data
+  },
+
   async initiateLogin(email) {
     const response = await api.post('/auth/send-login-otp', { email })
     return response.data
